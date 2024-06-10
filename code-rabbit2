@@ -1,0 +1,76 @@
+import express, { Request, Response } from 'express';
+import dotenv from 'dotenv';
+import path from 'path';
+import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { pipeline, TextGenerationOutput } from '@xenova/transformers'; // Import pipeline and TextGenerationOutput
+
+// Load environment variables from a .env file
+dotenv.config();
+
+console.log("Hugging Face API Key:", process.env.HUGGING_FACE_API_KEY); // Log API Key
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const PORT = process.env.PORT || 3000;
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json()); // Use built-in JSON middleware
+
+// Define the path to the client directory
+const clientPath = path.join(__dirname, '../client');
+
+// Serve static files from the client directory
+app.use(express.static(clientPath));
+
+// Handle GET requests to the '/generate' endpoint
+app.get('/generate', async (req: Request, res: Response) => {
+  try {
+    console.log("Received request:", req.query); // Log request query parameters
+
+    const { message } = req.query;
+
+    if (typeof message !== 'string') {
+      return res.status(400).send({ error: 'Invalid message parameter' });
+    }
+
+    // Create text-generation pipeline
+    const generator = await pipeline('text-generation', 'Xenova/Qwen1.5-0.5B-Chat');
+
+    // Define the list of messages
+    const messages = [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: message }
+    ];
+
+    // Apply chat template
+    const text = generator.tokenizer.apply_chat_template(messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+    });
+
+    // Generate text
+    const output: TextGenerationOutput | TextGenerationOutput[] = await generator(text, {
+      model: 'C:\\Users\\KAHIGA\\Downloads\\model.safetensors'
+    });
+
+    const outputs: TextGenerationOutput[] = Array.isArray(output) ? output : [output];
+
+    console.log("Generated text:", outputs[0]?.generated_text); // Log generated text
+
+    const botResponse = outputs[0]?.generated_text || ''; // Get generated text
+    console.log("Bot response:", botResponse); // Log bot response
+
+    res.status(200).send({ bot: botResponse });
+  } catch (error) {
+    console.error("Error:", error); // Log any errors
+    res.status(500).send({ error: (error as Error).message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
